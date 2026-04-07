@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mi Año 2026</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232637;
+      --border: #2e3148;
+      --text: #e8eaf6;
+      --text-muted: #7b82b0;
+      --good: #22c55e;
+      --good-light: #166534;
+      --bad: #ef4444;
+      --bad-light: #7f1d1d;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo span { font-size: 1.5rem; }
+    .logo h1 { font-size: 1.2rem; font-weight: 700; color: var(--text); }
+    .logo small { color: var(--text-muted); font-size: 0.8rem; display: block; font-weight: 400; }
+
+    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 16px; border-radius: 8px; border: none;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      transition: all 0.15s ease; white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .btn-ghost { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── STATS ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      padding: 20px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      text-align: center;
+    }
+    .stat-card .num { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .stat-card .label { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card.good .num { color: var(--good); }
+    .stat-card.bad .num { color: var(--bad); }
+    .stat-card.neutral .num { color: var(--accent-hover); }
+    .stat-card.pct .num { color: var(--text); }
+
+    /* ── CALENDAR GRID ── */
+    .calendar-wrapper {
+      padding: 0 24px 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .months-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .month-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .month-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-hover);
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .day-names {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 6px;
+    }
+    .day-name {
+      text-align: center;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .days-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+    }
+
+    .day-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      border: 1px solid transparent;
+    }
+
+    .day-cell:hover:not(.empty):not(.future) {
+      border-color: var(--accent);
+      transform: scale(1.1);
+      z-index: 2;
+    }
+
+    .day-cell.empty { cursor: default; }
+    .day-cell.future { color: var(--text-muted); cursor: not-allowed; opacity: 0.4; }
+    .day-cell.today { border-color: var(--accent) !important; color: var(--accent-hover); }
+
+    .day-cell.unset {
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .day-cell.good {
+      background: var(--good-light);
+      color: var(--good);
+    }
+    .day-cell.bad {
+      background: var(--bad-light);
+      color: var(--bad);
+    }
+
+    .day-cell .dot {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+    }
+    .day-cell.bad .dot { background: var(--bad); }
+
+    /* ── MODAL ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .overlay.active { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      width: 90%; max-width: 440px;
+      transform: translateY(20px) scale(0.97);
+      transition: transform 0.2s ease;
+    }
+    .overlay.active .modal { transform: translateY(0) scale(1); }
+
+    .modal-date {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent-hover);
+      margin-bottom: 6px;
+    }
+    .modal-question {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-bottom: 22px;
+    }
+
+    .toggle-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .toggle-btn {
+      padding: 14px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+    }
+    .toggle-btn:hover { border-color: var(--text-muted); color: var(--text); }
+    .toggle-btn.selected-good {
+      border-color: var(--good);
+      background: var(--good-light);
+      color: var(--good);
+    }
+    .toggle-btn.selected-bad {
+      border-color: var(--bad);
+      background: var(--bad-light);
+      color: var(--bad);
+    }
+
+    .reason-section {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .reason-section.visible { display: flex; }
+
+    .reason-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 10px 12px;
+      resize: vertical;
+      min-height: 90px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--text-muted); }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn-save {
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .btn-save:hover { background: var(--accent-hover); }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--text-muted);
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: color 0.15s;
+    }
+    .btn-cancel:hover { color: var(--text); }
+
+    .btn-clear {
+      background: transparent;
+      color: var(--bad);
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--bad-light);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+      margin-right: auto;
+      transition: all 0.15s;
+    }
+    .btn-clear:hover { background: var(--bad-light); }
+
+    /* ── LEGEND ── */
+    .legend {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .legend-dot {
+      width: 14px; height: 14px;
+      border-radius: 4px;
+    }
+    .legend-dot.good { background: var(--good-light); border: 1px solid var(--good); }
+    .legend-dot.bad { background: var(--bad-light); border: 1px solid var(--bad); }
+    .legend-dot.unset { background: var(--surface2); border: 1px solid var(--border); }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 22px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      z-index: 200;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      header { padding: 12px 16px; }
+      .stats { padding: 14px 16px; }
+      .calendar-wrapper { padding: 0 16px 30px; }
+      .modal { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <span>📅</span>
+    <div>
+      <h1>Mi Año 2026</h1>
+      <small>Registro personal de días</small>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" onclick="exportExcel()">⬇ Descargar Excel</button>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat-card good">
+    <div class="num" id="stat-good">0</div>
+    <div class="label">Días buenos</div>
+  </div>
+  <div class="stat-card bad">
+    <div class="num" id="stat-bad">0</div>
+    <div class="label">Días malos</div>
+  </div>
+  <div class="stat-card neutral">
+    <div class="num" id="stat-unset">0</div>
+    <div class="label">Sin registrar</div>
+  </div>
+  <div class="stat-card pct">
+    <div class="num" id="stat-pct">–</div>
+    <div class="label">% Días buenos</div>
+  </div>
+</div>
+
+<!-- CALENDAR -->
+<div class="calendar-wrapper">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot good"></div> Me fue bien</div>
+    <div class="legend-item"><div class="legend-dot bad"></div> Me fue mal</div>
+    <div class="legend-item"><div class="legend-dot unset"></div> Sin registrar</div>
+  </div>
+  <div class="months-grid" id="months-grid"></div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-date" id="modal-date"></div>
+    <div class="modal-question">¿Cómo te fue este día?</div>
+
+    <div class="toggle-row">
+      <button class="toggle-btn" id="btn-good" onclick="selectStatus('good')">😊 Me fue bien</button>
+      <button class="toggle-btn" id="btn-bad" onclick="selectStatus('bad')">😞 Me fue mal</button>
+    </div>
+
+    <div class="reason-section" id="reason-section">
+      <div class="reason-label">¿Por qué te fue mal?</div>
+      <textarea id="reason-input" placeholder="Escribí acá la razón..."></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-clear" id="btn-clear" onclick="clearDay()" style="display:none">🗑 Borrar</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveDay()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── DATA ──────────────────────────────────────────────────────
+  const YEAR = 2026;
+  const STORAGE_KEY = 'mi-anio-2026';
+
+  const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DAYS_ES   = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
+
+  let data = {};
+  let modalKey = null;
+  let modalStatus = null;
+
+  function load() {
+    try { data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+    catch(e) { data = {}; }
+  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+  // ── DATE HELPERS ──────────────────────────────────────────────
+  function today() {
+    const d = new Date();
+    return `${YEAR}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function isPast(key) { return key <= today(); }
+  function isToday(key) { return key === today(); }
+
+  function dateKey(y, m, d) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+
+  function formatDateLabel(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    const date = new Date(y, m-1, d);
+    const dayName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][date.getDay()];
+    return `${dayName} ${d} de ${MONTHS_ES[m-1]} ${y}`;
+  }
+
+  // ── RENDER CALENDAR ───────────────────────────────────────────
+  function renderCalendar() {
+    const grid = document.getElementById('months-grid');
+    grid.innerHTML = '';
+
+    for (let m = 0; m < 12; m++) {
+      const card = document.createElement('div');
+      card.className = 'month-card';
+
+      const title = document.createElement('div');
+      title.className = 'month-name';
+      title.textContent = MONTHS_ES[m];
+      card.appendChild(title);
+
+      // Day-of-week header
+      const dayNames = document.createElement('div');
+      dayNames.className = 'day-names';
+      DAYS_ES.forEach(n => {
+        const el = document.createElement('div');
+        el.className = 'day-name';
+        el.textContent = n;
+        dayNames.appendChild(el);
+      });
+      card.appendChild(dayNames);
+
+      const daysGrid = document.createElement('div');
+      daysGrid.className = 'days-grid';
+
+      const firstDay = new Date(YEAR, m, 1).getDay(); // 0=Sun
+      const daysInMonth = new Date(YEAR, m+1, 0).getDate();
+
+      // Empty cells before first day
+      for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'day-cell empty';
+        daysGrid.appendChild(empty);
+      }
+
+      // Day cells
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = dateKey(YEAR, m, d);
+        const entry = data[key];
+        const past = isPast(key);
+        const tod = isToday(key);
+
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+
+        if (!past) {
+          cell.classList.add('future');
+        } else if (entry) {
+          cell.classList.add(entry.status);
+        } else {
+          cell.classList.add('unset');
+        }
+
+        if (tod) cell.classList.add('today');
+        cell.textContent = d;
+
+        if (past) {
+          cell.title = formatDateLabel(key);
+          cell.addEventListener('click', () => openModal(key));
+        }
+
+        daysGrid.appendChild(cell);
+      }
+
+      card.appendChild(daysGrid);
+      grid.appendChild(card);
+    }
+
+    updateStats();
+  }
+
+  // ── STATS ─────────────────────────────────────────────────────
+  function updateStats() {
+    const todayKey = today();
+    // Only count days from Jan 1 up to today
+    const [ty, tm, td] = todayKey.split('-').map(Number);
+    const firstDay = new Date(YEAR, 0, 1);
+    const todayDate = new Date(ty, tm-1, td);
+    const daysPassed = Math.floor((todayDate - firstDay) / 86400000) + 1;
+
+    let good = 0, bad = 0;
+    for (const key in data) {
+      if (data[key].status === 'good') good++;
+      if (data[key].status === 'bad') bad++;
+    }
+    const recorded = good + bad;
+    const unset = daysPassed - recorded;
+    const pct = recorded > 0 ? Math.round(good / recorded * 100) : null;
+
+    document.getElementById('stat-good').textContent = good;
+    document.getElementById('stat-bad').textContent = bad;
+    document.getElementById('stat-unset').textContent = Math.max(0, unset);
+    document.getElementById('stat-pct').textContent = pct !== null ? pct + '%' : '–';
+  }
+
+  // ── MODAL ─────────────────────────────────────────────────────
+  function openModal(key) {
+    modalKey = key;
+    const entry = data[key];
+    modalStatus = entry ? entry.status : null;
+
+    document.getElementById('modal-date').textContent = formatDateLabel(key);
+    document.getElementById('reason-input').value = entry?.reason || '';
+    document.getElementById('btn-clear').style.display = entry ? 'block' : 'none';
+
+    updateToggleUI();
+
+    document.getElementById('overlay').classList.add('active');
+  }
+
+  function closeModal(e) {
+    if (e && e.target !== document.getElementById('overlay')) return;
+    document.getElementById('overlay').classList.remove('active');
+    modalKey = null;
+    modalStatus = null;
+  }
+
+  function selectStatus(s) {
+    modalStatus = s;
+    updateToggleUI();
+  }
+
+  function updateToggleUI() {
+    const btnGood = document.getElementById('btn-good');
+    const btnBad  = document.getElementById('btn-bad');
+    const reasonSection = document.getElementById('reason-section');
+
+    btnGood.className = 'toggle-btn' + (modalStatus === 'good' ? ' selected-good' : '');
+    btnBad.className  = 'toggle-btn' + (modalStatus === 'bad'  ? ' selected-bad'  : '');
+
+    if (modalStatus === 'bad') {
+      reasonSection.classList.add('visible');
+      setTimeout(() => document.getElementById('reason-input').focus(), 50);
+    } else {
+      reasonSection.classList.remove('visible');
+    }
+  }
+
+  function saveDay() {
+    if (!modalStatus) { showToast('Seleccioná cómo te fue antes de guardar.'); return; }
+    const reason = modalStatus === 'bad' ? document.getElementById('reason-input').value.trim() : '';
+    data[modalKey] = { status: modalStatus, reason };
+    save();
+    document.getElementById('overlay').classList.remove('active');
+    renderCalendar();
+    showToast(modalStatus === 'good' ? '✅ Día registrado como bueno' : '🔴 Día registrado como malo');
+  }
+
+  function clearDay() {
+    delete data[modalKey];
+    save();
+    document.getElementById('overlay').classList.remove('active');
+    renderCalendar();
+    showToast('🗑 Registro eliminado');
+  }
+
+  // ── KEYBOARD ─────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('overlay').classList.remove('active');
+  });
+
+  // ── TOAST ────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  // ── EXPORT EXCEL ─────────────────────────────────────────────
+  function exportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // ── Hoja 1: Registro detallado
+    const rows = [['Fecha', 'Día de la semana', 'Mes', 'Estado', 'Justificación']];
+
+    const todayKey = today();
+    const firstDay = new Date(YEAR, 0, 1);
+    const [ty, tm, td] = todayKey.split('-').map(Number);
+    const todayDate = new Date(ty, tm-1, td);
+    const totalDays = Math.floor((todayDate - firstDay) / 86400000) + 1;
+
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(YEAR, 0, 1 + i);
+      const key = `${YEAR}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+      const entry = data[key];
+      rows.push([
+        `${d.getDate()}/${d.getMonth()+1}/${YEAR}`,
+        dayNames[d.getDay()],
+        MONTHS_ES[d.getMonth()],
+        entry ? (entry.status === 'good' ? 'Bien ✅' : 'Mal ❌') : 'Sin registrar',
+        entry?.reason || ''
+      ]);
+    }
+
+    const ws1 = XLSX.utils.aoa_to_sheet(rows);
+
+    // Column widths
+    ws1['!cols'] = [
+      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 50 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws1, 'Registro Completo');
+
+    // ── Hoja 2: Días malos con justificación
+    const badRows = [['Fecha', 'Día de la semana', 'Mes', 'Justificación']];
+    for (const key in data) {
+      if (data[key].status === 'bad') {
+        const [y, m, d] = key.split('-').map(Number);
+        const date = new Date(y, m-1, d);
+        const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+        badRows.push([
+          `${d}/${m}/${y}`,
+          dayNames[date.getDay()],
+          MONTHS_ES[m-1],
+          data[key].reason || '(sin justificación)'
+        ]);
+      }
+    }
+
+    const ws2 = XLSX.utils.aoa_to_sheet(badRows);
+    ws2['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 55 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Días Malos');
+
+    // ── Hoja 3: Resumen por mes
+    const summaryRows = [['Mes', 'Días buenos', 'Días malos', 'Sin registrar', '% Buenos']];
+    for (let m = 0; m < 12; m++) {
+      const daysInMonth = new Date(YEAR, m+1, 0).getDate();
+      let good = 0, bad = 0, unset = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${YEAR}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        if (key > todayKey) continue;
+        const entry = data[key];
+        if (!entry) unset++;
+        else if (entry.status === 'good') good++;
+        else bad++;
+      }
+      const rec = good + bad;
+      summaryRows.push([
+        MONTHS_ES[m], good, bad, unset,
+        rec > 0 ? `${Math.round(good/rec*100)}%` : '–'
+      ]);
+    }
+
+    const ws3 = XLSX.utils.aoa_to_sheet(summaryRows);
+    ws3['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Resumen Mensual');
+
+    XLSX.writeFile(wb, `Mi-Anio-2026_${todayKey}.xlsx`);
+    showToast('📥 Archivo Excel descargado');
+  }
+
+  // ── INIT ─────────────────────────────────────────────────────
+  load();
+  renderCalendar();
+</script>
+</body>
+</html>
