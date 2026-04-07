@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mi Año 2026</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -31,6 +33,69 @@
       min-height: 100vh;
     }
 
+    /* ── SETUP SCREEN ── */
+    #setup-screen {
+      display: none;
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #setup-screen.visible { display: flex; }
+
+    .setup-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px;
+      max-width: 520px;
+      width: 100%;
+    }
+    .setup-card h2 { font-size: 1.3rem; margin-bottom: 8px; color: var(--accent-hover); }
+    .setup-card p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.6; }
+    .setup-card ol { color: var(--text-muted); font-size: 0.875rem; padding-left: 20px; margin-bottom: 24px; line-height: 2; }
+    .setup-card ol a { color: var(--accent-hover); }
+    .setup-card label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .setup-card input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: inherit;
+      font-size: 0.875rem; padding: 10px 12px; outline: none;
+      margin-bottom: 14px; transition: border-color 0.15s;
+    }
+    .setup-card input:focus { border-color: var(--accent); }
+    .setup-card input::placeholder { color: var(--text-muted); }
+    .btn-connect {
+      width: 100%; padding: 12px; background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-connect:hover { background: var(--accent-hover); }
+    .setup-error { color: var(--bad); font-size: 0.8rem; margin-top: 8px; display: none; }
+
+    /* ── LOADING ── */
+    #loading-screen {
+      display: none;
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 998;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #loading-screen.visible { display: flex; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-screen p { color: var(--text-muted); font-size: 0.9rem; }
+
     /* ── HEADER ── */
     header {
       background: var(--surface);
@@ -51,7 +116,33 @@
     .logo h1 { font-size: 1.2rem; font-weight: 700; color: var(--text); }
     .logo small { color: var(--text-muted); font-size: 0.8rem; display: block; font-weight: 400; }
 
-    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    .sync-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 20px;
+      font-size: 0.75rem; font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      transition: all 0.3s ease;
+    }
+    .sync-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+    }
+    .sync-badge.connected { color: var(--good); border-color: var(--good-light); background: rgba(34,197,94,0.08); }
+    .sync-badge.connected .dot { background: var(--good); animation: pulse 2s infinite; }
+    .sync-badge.saving { color: #f59e0b; border-color: #78350f; background: rgba(245,158,11,0.08); }
+    .sync-badge.saving .dot { background: #f59e0b; }
+    .sync-badge.error { color: var(--bad); border-color: var(--bad-light); }
+    .sync-badge.error .dot { background: var(--bad); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
 
     .btn {
       display: inline-flex; align-items: center; gap: 7px;
@@ -87,6 +178,7 @@
     .stat-card.bad .num { color: var(--bad); }
     .stat-card.neutral .num { color: var(--accent-hover); }
     .stat-card.pct .num { color: var(--text); }
+    .stat-card.medical-stat .num { color: #38bdf8; }
 
     /* ── CALENDAR GRID ── */
     .calendar-wrapper {
@@ -174,16 +266,16 @@
       color: var(--bad);
     }
 
-    .day-cell .dot {
+    .medical-badge {
       position: absolute;
-      bottom: 2px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
+      top: 1px;
+      right: 2px;
+      font-size: 0.55rem;
+      line-height: 1;
+      color: #38bdf8;
+      font-weight: 900;
+      text-shadow: 0 0 4px rgba(56,189,248,0.5);
     }
-    .day-cell.bad .dot { background: var(--bad); }
 
     /* ── MODAL ── */
     .overlay {
@@ -284,6 +376,31 @@
     textarea:focus { border-color: var(--accent); }
     textarea::placeholder { color: var(--text-muted); }
 
+    /* ── MEDICAL TOGGLE ── */
+    .medical-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      width: 100%;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .medical-toggle:hover { border-color: #38bdf8; color: #38bdf8; }
+    .medical-toggle.active {
+      border-color: #38bdf8;
+      background: rgba(56,189,248,0.1);
+      color: #38bdf8;
+    }
+
     .modal-actions {
       display: flex;
       gap: 10px;
@@ -302,6 +419,7 @@
       transition: background 0.15s;
     }
     .btn-save:hover { background: var(--accent-hover); }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .btn-cancel {
       background: transparent;
@@ -378,54 +496,108 @@
       .stats { padding: 14px 16px; }
       .calendar-wrapper { padding: 0 16px 30px; }
       .modal { padding: 20px; }
+      .setup-card { padding: 24px; }
     }
   </style>
 </head>
 <body>
 
-<!-- HEADER -->
-<header>
-  <div class="logo">
-    <span>📅</span>
-    <div>
-      <h1>Mi Año 2026</h1>
-      <small>Registro personal de días</small>
+<!-- ══════════════════════════════════════════
+     SETUP SCREEN (primera vez)
+══════════════════════════════════════════ -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <h2>⚙️ Configuración inicial</h2>
+    <p>Para que los datos se sincronicen entre todos tus dispositivos, necesitás conectar la app a tu base de datos de Firebase. Solo se hace una vez.</p>
+    <ol>
+      <li>Andá a <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>
+      <li>Creá un proyecto nuevo (cualquier nombre)</li>
+      <li>Entrá al proyecto → <strong>Firestore Database</strong> → Crear base de datos → Modo de prueba</li>
+      <li>Andá a <strong>Configuración del proyecto</strong> (ícono ⚙️) → <strong>Tus apps</strong> → Agregar app → Web (&lt;/&gt;)</li>
+      <li>Copiá los valores del <code>firebaseConfig</code> y pegálos abajo</li>
+    </ol>
+
+    <label>API Key</label>
+    <input type="text" id="cfg-apiKey" placeholder="AIzaSy..." />
+
+    <label>Project ID</label>
+    <input type="text" id="cfg-projectId" placeholder="mi-anio-2026" />
+
+    <label>App ID</label>
+    <input type="text" id="cfg-appId" placeholder="1:123456789:web:abc..." />
+
+    <button class="btn-connect" onclick="connectFirebase()">Conectar y guardar</button>
+    <div class="setup-error" id="setup-error">No se pudo conectar. Revisá los datos ingresados.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     LOADING
+══════════════════════════════════════════ -->
+<div id="loading-screen" class="visible">
+  <div class="spinner"></div>
+  <p>Cargando datos...</p>
+</div>
+
+<!-- ══════════════════════════════════════════
+     APP
+══════════════════════════════════════════ -->
+<div id="app" style="display:none">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <span>📅</span>
+      <div>
+        <h1>Mi Año 2026</h1>
+        <small>Registro personal de días</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="sync-badge" id="sync-badge">
+        <div class="dot"></div>
+        <span id="sync-text">Conectando...</span>
+      </div>
+      <button class="btn btn-ghost" onclick="exportExcel()">⬇ Descargar Excel</button>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-card good">
+      <div class="num" id="stat-good">0</div>
+      <div class="label">Días buenos</div>
+    </div>
+    <div class="stat-card bad">
+      <div class="num" id="stat-bad">0</div>
+      <div class="label">Días malos</div>
+    </div>
+    <div class="stat-card neutral">
+      <div class="num" id="stat-unset">0</div>
+      <div class="label">Sin registrar</div>
+    </div>
+    <div class="stat-card pct">
+      <div class="num" id="stat-pct">–</div>
+      <div class="label">% Días buenos</div>
+    </div>
+    <div class="stat-card medical-stat">
+      <div class="num" id="stat-medical">0</div>
+      <div class="label">Consultas médicas</div>
     </div>
   </div>
-  <div class="header-actions">
-    <button class="btn btn-ghost" onclick="exportExcel()">⬇ Descargar Excel</button>
-  </div>
-</header>
 
-<!-- STATS -->
-<div class="stats">
-  <div class="stat-card good">
-    <div class="num" id="stat-good">0</div>
-    <div class="label">Días buenos</div>
+  <!-- CALENDAR -->
+  <div class="calendar-wrapper">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot good"></div> Me fue bien</div>
+      <div class="legend-item"><div class="legend-dot bad"></div> Me fue mal</div>
+      <div class="legend-item"><div class="legend-dot unset"></div> Sin registrar</div>
+      <div class="legend-item"><span style="color:#38bdf8;font-weight:900;font-size:0.85rem;">✚</span> Consulta médica</div>
+    </div>
+    <div class="months-grid" id="months-grid"></div>
   </div>
-  <div class="stat-card bad">
-    <div class="num" id="stat-bad">0</div>
-    <div class="label">Días malos</div>
-  </div>
-  <div class="stat-card neutral">
-    <div class="num" id="stat-unset">0</div>
-    <div class="label">Sin registrar</div>
-  </div>
-  <div class="stat-card pct">
-    <div class="num" id="stat-pct">–</div>
-    <div class="label">% Días buenos</div>
-  </div>
-</div>
 
-<!-- CALENDAR -->
-<div class="calendar-wrapper">
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot good"></div> Me fue bien</div>
-    <div class="legend-item"><div class="legend-dot bad"></div> Me fue mal</div>
-    <div class="legend-item"><div class="legend-dot unset"></div> Sin registrar</div>
-  </div>
-  <div class="months-grid" id="months-grid"></div>
-</div>
+</div><!-- /app -->
 
 <!-- MODAL -->
 <div class="overlay" id="overlay" onclick="closeModal(event)">
@@ -443,10 +615,14 @@
       <textarea id="reason-input" placeholder="Escribí acá la razón..."></textarea>
     </div>
 
+    <button class="medical-toggle" id="btn-medical" onclick="toggleMedical()">
+      ✚ Consulta médica
+    </button>
+
     <div class="modal-actions">
       <button class="btn-clear" id="btn-clear" onclick="clearDay()" style="display:none">🗑 Borrar</button>
       <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
-      <button class="btn-save" onclick="saveDay()">Guardar</button>
+      <button class="btn-save" id="btn-save" onclick="saveDay()">Guardar</button>
     </div>
   </div>
 </div>
@@ -455,31 +631,132 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  // ── DATA ──────────────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // CONFIG & FIREBASE
+  // ══════════════════════════════════════════
+  const CONFIG_KEY = 'mi-anio-firebase-config';
   const YEAR = 2026;
-  const STORAGE_KEY = 'mi-anio-2026';
-
   const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const DAYS_ES   = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
 
+  let db = null;
   let data = {};
   let modalKey = null;
   let modalStatus = null;
+  let modalMedical = false;
+  let isSaving = false;
 
-  function load() {
-    try { data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
-    catch(e) { data = {}; }
+  // ── Guardar / leer config ──
+  function saveConfig(cfg) { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); }
+  function loadConfig() {
+    try { return JSON.parse(localStorage.getItem(CONFIG_KEY)); }
+    catch(e) { return null; }
   }
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 
-  // ── DATE HELPERS ──────────────────────────────────────────────
-  function today() {
+  // ── Iniciar Firebase ──
+  function initFirebase(cfg) {
+    if (firebase.apps.length) firebase.apps.forEach(a => a.delete());
+    const app = firebase.initializeApp({
+      apiKey: cfg.apiKey,
+      authDomain: `${cfg.projectId}.firebaseapp.com`,
+      projectId: cfg.projectId,
+      appId: cfg.appId
+    });
+    db = firebase.firestore(app);
+  }
+
+  // ── Conectar desde el setup screen ──
+  async function connectFirebase() {
+    const apiKey     = document.getElementById('cfg-apiKey').value.trim();
+    const projectId  = document.getElementById('cfg-projectId').value.trim();
+    const appId      = document.getElementById('cfg-appId').value.trim();
+    const errEl      = document.getElementById('setup-error');
+    errEl.style.display = 'none';
+
+    if (!apiKey || !projectId || !appId) {
+      errEl.textContent = 'Completá todos los campos.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const cfg = { apiKey, projectId, appId };
+    try {
+      initFirebase(cfg);
+      // Test connection
+      await db.collection('calendar').doc('2026').get();
+      saveConfig(cfg);
+      document.getElementById('setup-screen').classList.remove('visible');
+      startApp();
+    } catch(e) {
+      errEl.textContent = 'No se pudo conectar. Revisá los datos e intentá de nuevo.';
+      errEl.style.display = 'block';
+    }
+  }
+
+  // ══════════════════════════════════════════
+  // APP START
+  // ══════════════════════════════════════════
+  async function startApp() {
+    setSyncStatus('connecting');
+    document.getElementById('loading-screen').classList.add('visible');
+
+    db.collection('calendar').doc('2026').onSnapshot(
+      (doc) => {
+        data = doc.exists ? doc.data() : {};
+        document.getElementById('loading-screen').classList.remove('visible');
+        document.getElementById('app').style.display = 'block';
+        setSyncStatus('connected');
+        renderCalendar();
+      },
+      (err) => {
+        console.error(err);
+        setSyncStatus('error');
+      }
+    );
+  }
+
+  // ══════════════════════════════════════════
+  // BOOT
+  // ══════════════════════════════════════════
+  (async function boot() {
+    const cfg = loadConfig();
+    if (cfg) {
+      try {
+        initFirebase(cfg);
+        startApp();
+      } catch(e) {
+        document.getElementById('loading-screen').classList.remove('visible');
+        document.getElementById('setup-screen').classList.add('visible');
+      }
+    } else {
+      document.getElementById('loading-screen').classList.remove('visible');
+      document.getElementById('setup-screen').classList.add('visible');
+    }
+  })();
+
+  // ══════════════════════════════════════════
+  // SYNC STATUS
+  // ══════════════════════════════════════════
+  function setSyncStatus(status) {
+    const badge = document.getElementById('sync-badge');
+    const text  = document.getElementById('sync-text');
+    badge.className = 'sync-badge';
+    if (status === 'connected') { badge.classList.add('connected'); text.textContent = 'En vivo'; }
+    else if (status === 'saving') { badge.classList.add('saving'); text.textContent = 'Guardando...'; }
+    else if (status === 'error') { badge.classList.add('error'); text.textContent = 'Sin conexión'; }
+    else { text.textContent = 'Conectando...'; }
+  }
+
+  // ══════════════════════════════════════════
+  // DATE HELPERS
+  // ══════════════════════════════════════════
+  function todayKey() {
     const d = new Date();
     return `${YEAR}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
-  function isPast(key) { return key <= today(); }
-  function isToday(key) { return key === today(); }
+  function isPast(key) { return key <= todayKey(); }
+  function isToday(key) { return key === todayKey(); }
 
   function dateKey(y, m, d) {
     return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -492,7 +769,9 @@
     return `${dayName} ${d} de ${MONTHS_ES[m-1]} ${y}`;
   }
 
-  // ── RENDER CALENDAR ───────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // RENDER CALENDAR
+  // ══════════════════════════════════════════
   function renderCalendar() {
     const grid = document.getElementById('months-grid');
     grid.innerHTML = '';
@@ -506,7 +785,6 @@
       title.textContent = MONTHS_ES[m];
       card.appendChild(title);
 
-      // Day-of-week header
       const dayNames = document.createElement('div');
       dayNames.className = 'day-names';
       DAYS_ES.forEach(n => {
@@ -520,17 +798,15 @@
       const daysGrid = document.createElement('div');
       daysGrid.className = 'days-grid';
 
-      const firstDay = new Date(YEAR, m, 1).getDay(); // 0=Sun
+      const firstDay = new Date(YEAR, m, 1).getDay();
       const daysInMonth = new Date(YEAR, m+1, 0).getDate();
 
-      // Empty cells before first day
       for (let i = 0; i < firstDay; i++) {
         const empty = document.createElement('div');
         empty.className = 'day-cell empty';
         daysGrid.appendChild(empty);
       }
 
-      // Day cells
       for (let d = 1; d <= daysInMonth; d++) {
         const key = dateKey(YEAR, m, d);
         const entry = data[key];
@@ -551,8 +827,15 @@
         if (tod) cell.classList.add('today');
         cell.textContent = d;
 
+        if (entry?.medical) {
+          const badge = document.createElement('span');
+          badge.className = 'medical-badge';
+          badge.textContent = '✚';
+          cell.appendChild(badge);
+        }
+
         if (past) {
-          cell.title = formatDateLabel(key);
+          cell.title = formatDateLabel(key) + (entry?.medical ? ' · Consulta médica' : '');
           cell.addEventListener('click', () => openModal(key));
         }
 
@@ -566,19 +849,21 @@
     updateStats();
   }
 
-  // ── STATS ─────────────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // STATS
+  // ══════════════════════════════════════════
   function updateStats() {
-    const todayKey = today();
-    // Only count days from Jan 1 up to today
-    const [ty, tm, td] = todayKey.split('-').map(Number);
+    const tk = todayKey();
+    const [ty, tm, td] = tk.split('-').map(Number);
     const firstDay = new Date(YEAR, 0, 1);
     const todayDate = new Date(ty, tm-1, td);
     const daysPassed = Math.floor((todayDate - firstDay) / 86400000) + 1;
 
-    let good = 0, bad = 0;
+    let good = 0, bad = 0, medical = 0;
     for (const key in data) {
       if (data[key].status === 'good') good++;
       if (data[key].status === 'bad') bad++;
+      if (data[key].medical) medical++;
     }
     const recorded = good + bad;
     const unset = daysPassed - recorded;
@@ -588,19 +873,25 @@
     document.getElementById('stat-bad').textContent = bad;
     document.getElementById('stat-unset').textContent = Math.max(0, unset);
     document.getElementById('stat-pct').textContent = pct !== null ? pct + '%' : '–';
+    document.getElementById('stat-medical').textContent = medical;
   }
 
-  // ── MODAL ─────────────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // MODAL
+  // ══════════════════════════════════════════
   function openModal(key) {
     modalKey = key;
     const entry = data[key];
     modalStatus = entry ? entry.status : null;
+    modalMedical = entry?.medical || false;
 
     document.getElementById('modal-date').textContent = formatDateLabel(key);
     document.getElementById('reason-input').value = entry?.reason || '';
     document.getElementById('btn-clear').style.display = entry ? 'block' : 'none';
+    document.getElementById('btn-save').disabled = false;
 
     updateToggleUI();
+    updateMedicalUI();
 
     document.getElementById('overlay').classList.add('active');
   }
@@ -633,30 +924,74 @@
     }
   }
 
-  function saveDay() {
+  function toggleMedical() {
+    modalMedical = !modalMedical;
+    updateMedicalUI();
+  }
+
+  function updateMedicalUI() {
+    const btn = document.getElementById('btn-medical');
+    btn.className = 'medical-toggle' + (modalMedical ? ' active' : '');
+  }
+
+  // ══════════════════════════════════════════
+  // SAVE / DELETE → FIRESTORE
+  // ══════════════════════════════════════════
+  async function saveDay() {
     if (!modalStatus) { showToast('Seleccioná cómo te fue antes de guardar.'); return; }
+    if (isSaving) return;
+    isSaving = true;
+
     const reason = modalStatus === 'bad' ? document.getElementById('reason-input').value.trim() : '';
-    data[modalKey] = { status: modalStatus, reason };
-    save();
-    document.getElementById('overlay').classList.remove('active');
-    renderCalendar();
-    showToast(modalStatus === 'good' ? '✅ Día registrado como bueno' : '🔴 Día registrado como malo');
+    const newData = { ...data, [modalKey]: { status: modalStatus, reason, medical: modalMedical } };
+
+    document.getElementById('btn-save').disabled = true;
+    setSyncStatus('saving');
+
+    try {
+      await db.collection('calendar').doc('2026').set(newData);
+      document.getElementById('overlay').classList.remove('active');
+      const medMsg = modalMedical ? ' · 🏥 Consulta médica marcada' : '';
+      showToast((modalStatus === 'good' ? '✅ Día registrado como bueno' : '🔴 Día registrado como malo') + medMsg);
+    } catch(e) {
+      showToast('❌ Error al guardar. Revisá tu conexión.');
+      setSyncStatus('error');
+    } finally {
+      isSaving = false;
+      document.getElementById('btn-save').disabled = false;
+    }
   }
 
-  function clearDay() {
-    delete data[modalKey];
-    save();
-    document.getElementById('overlay').classList.remove('active');
-    renderCalendar();
-    showToast('🗑 Registro eliminado');
+  async function clearDay() {
+    if (isSaving) return;
+    isSaving = true;
+    setSyncStatus('saving');
+
+    const newData = { ...data };
+    delete newData[modalKey];
+
+    try {
+      await db.collection('calendar').doc('2026').set(newData);
+      document.getElementById('overlay').classList.remove('active');
+      showToast('🗑 Registro eliminado');
+    } catch(e) {
+      showToast('❌ Error al borrar.');
+      setSyncStatus('error');
+    } finally {
+      isSaving = false;
+    }
   }
 
-  // ── KEYBOARD ─────────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // KEYBOARD
+  // ══════════════════════════════════════════
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') document.getElementById('overlay').classList.remove('active');
   });
 
-  // ── TOAST ────────────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // TOAST
+  // ══════════════════════════════════════════
   let toastTimer;
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -666,16 +1001,18 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
   }
 
-  // ── EXPORT EXCEL ─────────────────────────────────────────────
+  // ══════════════════════════════════════════
+  // EXPORT EXCEL
+  // ══════════════════════════════════════════
   function exportExcel() {
     const wb = XLSX.utils.book_new();
+    const tk = todayKey();
 
-    // ── Hoja 1: Registro detallado
-    const rows = [['Fecha', 'Día de la semana', 'Mes', 'Estado', 'Justificación']];
+    // ── Hoja 1: Registro completo
+    const rows = [['Fecha', 'Día de la semana', 'Mes', 'Estado', 'Justificación', 'Consulta médica']];
 
-    const todayKey = today();
     const firstDay = new Date(YEAR, 0, 1);
-    const [ty, tm, td] = todayKey.split('-').map(Number);
+    const [ty, tm, td] = tk.split('-').map(Number);
     const todayDate = new Date(ty, tm-1, td);
     const totalDays = Math.floor((todayDate - firstDay) / 86400000) + 1;
 
@@ -689,70 +1026,66 @@
         dayNames[d.getDay()],
         MONTHS_ES[d.getMonth()],
         entry ? (entry.status === 'good' ? 'Bien ✅' : 'Mal ❌') : 'Sin registrar',
-        entry?.reason || ''
+        entry?.reason || '',
+        entry?.medical ? 'Sí 🏥' : ''
       ]);
     }
 
     const ws1 = XLSX.utils.aoa_to_sheet(rows);
-
-    // Column widths
-    ws1['!cols'] = [
-      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 50 }
-    ];
-
+    ws1['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 50 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, ws1, 'Registro Completo');
 
-    // ── Hoja 2: Días malos con justificación
+    // ── Hoja 2: Días malos
     const badRows = [['Fecha', 'Día de la semana', 'Mes', 'Justificación']];
     for (const key in data) {
       if (data[key].status === 'bad') {
         const [y, m, d] = key.split('-').map(Number);
         const date = new Date(y, m-1, d);
         const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-        badRows.push([
-          `${d}/${m}/${y}`,
-          dayNames[date.getDay()],
-          MONTHS_ES[m-1],
-          data[key].reason || '(sin justificación)'
-        ]);
+        badRows.push([`${d}/${m}/${y}`, dayNames[date.getDay()], MONTHS_ES[m-1], data[key].reason || '(sin justificación)']);
       }
     }
-
     const ws2 = XLSX.utils.aoa_to_sheet(badRows);
     ws2['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 55 }];
     XLSX.utils.book_append_sheet(wb, ws2, 'Días Malos');
 
-    // ── Hoja 3: Resumen por mes
-    const summaryRows = [['Mes', 'Días buenos', 'Días malos', 'Sin registrar', '% Buenos']];
+    // ── Hoja 3: Consultas médicas
+    const medRows = [['Fecha', 'Día de la semana', 'Mes', 'Estado del día']];
+    for (const key in data) {
+      if (data[key].medical) {
+        const [y, m, d] = key.split('-').map(Number);
+        const date = new Date(y, m-1, d);
+        const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+        medRows.push([`${d}/${m}/${y}`, dayNames[date.getDay()], MONTHS_ES[m-1], data[key].status === 'good' ? 'Bien ✅' : 'Mal ❌']);
+      }
+    }
+    const ws3 = XLSX.utils.aoa_to_sheet(medRows);
+    ws3['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Consultas Médicas');
+
+    // ── Hoja 4: Resumen mensual
+    const summaryRows = [['Mes', 'Días buenos', 'Días malos', 'Sin registrar', '% Buenos', 'Consultas médicas']];
     for (let m = 0; m < 12; m++) {
       const daysInMonth = new Date(YEAR, m+1, 0).getDate();
-      let good = 0, bad = 0, unset = 0;
+      let good = 0, bad = 0, unset = 0, med = 0;
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${YEAR}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        if (key > todayKey) continue;
+        if (key > tk) continue;
         const entry = data[key];
         if (!entry) unset++;
-        else if (entry.status === 'good') good++;
-        else bad++;
+        else { if (entry.status === 'good') good++; else bad++; }
+        if (entry?.medical) med++;
       }
       const rec = good + bad;
-      summaryRows.push([
-        MONTHS_ES[m], good, bad, unset,
-        rec > 0 ? `${Math.round(good/rec*100)}%` : '–'
-      ]);
+      summaryRows.push([MONTHS_ES[m], good, bad, unset, rec > 0 ? `${Math.round(good/rec*100)}%` : '–', med]);
     }
+    const ws4 = XLSX.utils.aoa_to_sheet(summaryRows);
+    ws4['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws4, 'Resumen Mensual');
 
-    const ws3 = XLSX.utils.aoa_to_sheet(summaryRows);
-    ws3['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }];
-    XLSX.utils.book_append_sheet(wb, ws3, 'Resumen Mensual');
-
-    XLSX.writeFile(wb, `Mi-Anio-2026_${todayKey}.xlsx`);
+    XLSX.writeFile(wb, `Mi-Anio-2026_${tk}.xlsx`);
     showToast('📥 Archivo Excel descargado');
   }
-
-  // ── INIT ─────────────────────────────────────────────────────
-  load();
-  renderCalendar();
 </script>
 </body>
 </html>
