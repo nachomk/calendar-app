@@ -558,6 +558,7 @@
         <div class="dot"></div>
         <span id="sync-text">Conectando...</span>
       </div>
+      <button class="btn btn-ghost" onclick="openImport()">⬆ Importar datos</button>
       <button class="btn btn-ghost" onclick="exportExcel()">⬇ Descargar Excel</button>
     </div>
   </header>
@@ -623,6 +624,20 @@
       <button class="btn-clear" id="btn-clear" onclick="clearDay()" style="display:none">🗑 Borrar</button>
       <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
       <button class="btn-save" id="btn-save" onclick="saveDay()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="overlay" id="import-overlay" onclick="closeImport(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:500px">
+    <div class="modal-date">⬆ Importar datos</div>
+    <div class="modal-question" style="margin-bottom:16px">Pegá el contenido del archivo <strong>datos-2026.json</strong> acá abajo y hacé clic en Importar. Esto va a reemplazar todos los datos actuales.</div>
+    <textarea id="import-input" placeholder='Pegá el JSON acá...' style="min-height:160px;font-family:monospace;font-size:0.78rem"></textarea>
+    <div id="import-error" style="color:var(--bad);font-size:0.8rem;margin-top:8px;display:none"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-cancel" onclick="closeImport()">Cancelar</button>
+      <button class="btn-save" onclick="importData()">Importar</button>
     </div>
   </div>
 </div>
@@ -999,6 +1014,54 @@
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  // ══════════════════════════════════════════
+  // IMPORT
+  // ══════════════════════════════════════════
+  function openImport() {
+    document.getElementById('import-input').value = '';
+    document.getElementById('import-error').style.display = 'none';
+    document.getElementById('import-overlay').classList.add('active');
+  }
+
+  function closeImport(e) {
+    if (e && e.target !== document.getElementById('import-overlay')) return;
+    document.getElementById('import-overlay').classList.remove('active');
+  }
+
+  async function importData() {
+    const raw = document.getElementById('import-input').value.trim();
+    const errEl = document.getElementById('import-error');
+    errEl.style.display = 'none';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch(e) {
+      errEl.textContent = 'El JSON no es válido. Asegurate de copiar el contenido completo del archivo.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // Validate basic structure
+    const keys = Object.keys(parsed);
+    if (keys.length === 0 || !keys[0].match(/^\d{4}-\d{2}-\d{2}$/)) {
+      errEl.textContent = 'El formato no coincide. Usá el archivo datos-2026.json generado.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    setSyncStatus('saving');
+    try {
+      await db.collection('calendar').doc('2026').set(parsed);
+      document.getElementById('import-overlay').classList.remove('active');
+      showToast(`✅ ${keys.length} días importados correctamente`);
+    } catch(e) {
+      errEl.textContent = 'Error al conectar con Firebase. Revisá tu conexión.';
+      errEl.style.display = 'block';
+      setSyncStatus('error');
+    }
   }
 
   // ══════════════════════════════════════════
