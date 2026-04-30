@@ -1084,7 +1084,7 @@
 
     let good = 0, bad = 0, medical = 0;
     for (const key in data) {
-      if (key === '__meds__') continue;
+      if (key === 'medicamentos') continue;
       if (data[key].status === 'good') good++;
       if (data[key].status === 'bad') bad++;
       if (data[key].medical) medical++;
@@ -1232,7 +1232,7 @@
   let newPeriodMeds = []; // meds being added in the form
 
   function getMeds() {
-    return Array.isArray(data.__meds__) ? data.__meds__ : [];
+    return Array.isArray(data.medicamentos) ? data.medicamentos : [];
   }
 
   // Get active medication initials for a given dateKey
@@ -1319,15 +1319,22 @@
     };
     meds.push(newPeriod);
 
-    const newData = { ...data, __meds__: meds };
     setSyncStatus('saving');
     try {
-      await db.collection('calendar').doc('2026').set(newData);
+      await db.collection('calendar').doc('2026').update({ medicamentos: meds });
       hideAddPeriodForm();
       showToast('✅ Período de medicación guardado');
     } catch(e) {
-      showToast('❌ Error al guardar');
-      setSyncStatus('error');
+      // Si el doc no existe todavía, usar set
+      try {
+        await db.collection('calendar').doc('2026').set({ medicamentos: meds }, { merge: true });
+        hideAddPeriodForm();
+        showToast('✅ Período de medicación guardado');
+      } catch(e2) {
+        console.error('Error guardando medicamentos:', e2);
+        showToast('❌ ' + (e2.message || 'Error al guardar. Revisá las reglas de Firestore.'));
+        setSyncStatus('error');
+      }
     }
   }
 
@@ -1337,28 +1344,28 @@
     if (!period) return;
     period.endDate = todayKey();
 
-    const newData = { ...data, __meds__: meds };
     setSyncStatus('saving');
     try {
-      await db.collection('calendar').doc('2026').set(newData);
+      await db.collection('calendar').doc('2026').update({ medicamentos: meds });
       showToast('Período finalizado hoy');
       renderMedPeriods();
     } catch(e) {
-      showToast('❌ Error al guardar');
+      console.error('Error finalizando período:', e);
+      showToast('❌ ' + (e.message || 'Error al guardar'));
     }
   }
 
   async function deletePeriod(id) {
     if (!confirm('¿Eliminar este período de medicación?')) return;
     const meds = getMeds().filter(p => p.id !== id);
-    const newData = { ...data, __meds__: meds };
     setSyncStatus('saving');
     try {
-      await db.collection('calendar').doc('2026').set(newData);
+      await db.collection('calendar').doc('2026').update({ medicamentos: meds });
       showToast('🗑 Período eliminado');
       renderMedPeriods();
     } catch(e) {
-      showToast('❌ Error al eliminar');
+      console.error('Error eliminando período:', e);
+      showToast('❌ ' + (e.message || 'Error al eliminar'));
     }
   }
 
@@ -1475,7 +1482,7 @@
       const d = new Date(YEAR, 0, 1 + i);
       const key = `${YEAR}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-      const entry = (key === '__meds__') ? null : data[key];
+      const entry = (key === 'medicamentos') ? null : data[key];
       rows.push([
         `${d.getDate()}/${d.getMonth()+1}/${YEAR}`,
         dayNames[d.getDay()],
@@ -1506,7 +1513,7 @@
     // ── Hoja 4: Días malos
     const badRows = [['Fecha', 'Día de la semana', 'Mes', 'Justificación']];
     for (const key in data) {
-      if (key === '__meds__') continue;
+      if (key === 'medicamentos') continue;
       if (data[key].status === 'bad') {
         const [y, m, d] = key.split('-').map(Number);
         const date = new Date(y, m-1, d);
@@ -1521,7 +1528,7 @@
     // ── Hoja 5: Consultas médicas
     const medRows = [['Fecha', 'Día de la semana', 'Mes', 'Estado del día']];
     for (const key in data) {
-      if (key === '__meds__') continue;
+      if (key === 'medicamentos') continue;
       if (data[key].medical) {
         const [y, m, d] = key.split('-').map(Number);
         const date = new Date(y, m-1, d);
